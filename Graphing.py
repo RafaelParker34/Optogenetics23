@@ -415,8 +415,8 @@ def duringStimulation(preprocessed):
         if stimOn[i] > preprocessed.shiftTimes[j]:
             whenChange.append((i+1)*2)
             j+=1
-        trial.append(['On',np.mean(preprocessed.speed[stimOn[i]:stimOff[i]]),dWhen[j]])
-        trial.append(['Off',np.mean(preprocessed.speed[stimOff[i]:stimOff[i]+preprocessed.stimPattern[0]]),dWhen[j]])
+        trial.append(['On',np.median(preprocessed.speed[stimOn[i]:stimOff[i]]),dWhen[j]])
+        trial.append(['Off',np.median(preprocessed.speed[stimOff[i]:stimOff[i]+preprocessed.stimPattern[0]]),dWhen[j]])
             
     duringStim = pd.DataFrame(trial)
     duringStim.columns=['Stimulation','Speed Cm/Sec','Time']
@@ -446,7 +446,7 @@ def duringStimulation(preprocessed):
     ax[1].axvline(x=whenChange[0],color='b',linestyle='--',linewidth=3)
     ax[1].axvline(x=whenChange[1],color='b',linestyle='--',linewidth=3)
     samples = len(duringStim['Speed Cm/Sec'])
-    ax[1].set_xticks([samples/6,samples/3,5*samples/6])
+    ax[1].set_xticks([samples/6,samples/2,5*samples/6])
     ax[1].set_xticklabels(dWhen)
     ax[1].set_xlabel('Time (Minutes)')
     
