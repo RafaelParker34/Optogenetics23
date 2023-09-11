@@ -64,9 +64,9 @@ def bins30s(preprocessed,subCategory):
     for i in range(len(bins)-1):
         binSingle = pd.Series(subCategory[bins[i]:bins[i+1]])
         turns.append(binSingle)
-        if np.abs(bins[i]- start)<250: #range in case the mark was removed
+        if np.abs(bins[i]- start)<125: #range in case the mark was removed
             category.append(i)
-        elif np.abs(bins[i]- finish)<250:
+        elif np.abs(bins[i]- finish)<125:
             category.append(i)
     
     return turns, category
@@ -81,7 +81,7 @@ def plotLikelihood(preprocessed):
     i = 1
     for label in preprocessed.relevantLabels:
         lines.append(ax.plot(preprocessed.DLCfile[label+'_prob'])[0])
-        ax.text(1,i/15,label+' : '+str(preprocessed.numOutliers[i-1]))
+        ax.text(1,i/15,label+' : '+str(preprocessed.numOutliers[i-1])+'%')
         i+=1
     ax.legend(lines,preprocessed.relevantLabels,loc='lower right')
     ax.axhline(y=0.7,color='k',linestyle='--')
@@ -128,7 +128,7 @@ def plotTurning(preprocessed):
     for i in range(3):
         turnFrames = np.where(np.array(preprocessed.angleJudgements[start-length:start]) != 'Straight')[0]
         turns = np.array(preprocessed.theta[start-length:start])[turnFrames]
-        binning = np.linspace(90,170,17)
+        binning = np.linspace(90,175,17)
         
         if i ==0:
             ax[0].hist(turns,alpha=0.8,color=colors[i],bins=binning)
@@ -255,8 +255,8 @@ def timeTurning(preprocessed):
         ax[1].set_xticklabels(((xrange+1)*30).astype(str))
     else:
         ax[1].set_xticks(xrange)
-        lab = (((xrange+1)%3==0)*xrange+1).astype(str)
-        lab[lab=='0']=''
+        lab = (((xrange+1)%3==0)*xrange+1*30).astype(str)
+        lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
     
     handles = [Rectangle((0, 0), 1, 1, color=c, ec="k") for c in ['firebrick','forestgreen']]
@@ -322,8 +322,8 @@ def distTurning(preprocessed):
         ax[1].set_xticklabels(((xrange+1)*30).astype(str))
     else:
         ax[1].set_xticks(xrange)
-        lab = (((xrange+1)%3==0)*xrange).astype(str)
-        lab[lab=='0']=''
+        lab = (((xrange+1)%3==0)*xrange+1*30).astype(str)
+        lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
     
     handles = [Rectangle((0, 0), 1, 1, color=c, ec="k") for c in ['firebrick','forestgreen']]
@@ -379,8 +379,8 @@ def overallDist(preprocessed):
         ax[1].set_xticklabels(((xrange+1)*30).astype(str))
     else:
         ax[1].set_xticks(xrange)
-        lab = (((xrange+1)%3==0)*xrange).astype(str)
-        lab[lab=='0']=''
+        lab = (((xrange+1)%3==0)*xrange+1*30).astype(str)
+        lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
     handles = [Rectangle((0, 0), 1, 1, color=c, ec="k") for c in ['mediumblue']]
     ax[1].legend(handles,['OverallDist'],loc='upper right',fontsize='12')
@@ -407,41 +407,42 @@ def duringStimulation(preprocessed):
     dWhen = ['Before','During','After']
     stimOn = alignStimulation(preprocessed.cleanDLC.index,stimOn)
     stimOff = alignStimulation(preprocessed.cleanDLC.index,stimOff)
+    halfOffTime = int(preprocessed.stimPattern[1]/2)
     
     trial = []
     whenChange = []
     j = 0
     for i in range(len(stimOn)-1):
         if stimOn[i] > preprocessed.shiftTimes[j]:
-            whenChange.append((i+1)*2)
+            whenChange.append((i+1)*3)
             j+=1
         trial.append(['On',np.median(preprocessed.speed[stimOn[i]:stimOff[i]]),dWhen[j]])
-        trial.append(['Off',np.median(preprocessed.speed[stimOff[i]:stimOff[i]+preprocessed.stimPattern[0]]),dWhen[j]])
+        trial.append(['Off1',np.median(preprocessed.speed[stimOff[i]:stimOff[i]+halfOffTime]),dWhen[j]])
+        trial.append(['Off2',np.median(preprocessed.speed[stimOff[i]+halfOffTime:stimOff[i]+(halfOffTime*2)]),dWhen[j]])
             
     duringStim = pd.DataFrame(trial)
     duringStim.columns=['Stimulation','Speed Cm/Sec','Time']
     
     xOrder = dWhen
-    hueOrder = ['On','Off']
+    hueOrder = ['On','Off1','Off2']
     plot_params = {'data':duringStim,'x':'Time','y':'Speed Cm/Sec','hue':'Stimulation','order':xOrder,'hue_order':hueOrder}
     
     fig,ax = plt.subplots(1,2)
     fig.set_figwidth(13)
     fig.set_figheight(6)
     pairs = (
-        [('During','On'),('During','Off')],
-        [('Before','On'),('Before','Off')],
-        [('After','On'),('After','Off')],
-        [('Before','On'),('During','On')],
-        [('During','On'),('After','On')])
+        [('During','On'),('During','Off1')],
+        [('During','On'),('During','Off2')],
+        [('After','On'),('During','On')],
+        [('Before','On'),('During','On')])
     annotator = Annotator(ax[0],pairs,**plot_params)
     annotator.configure(test='Mann-Whitney',text_format='star',loc='outside')
-    sns.barplot(ax=ax[0],**plot_params,palette=['firebrick','black'])
+    sns.barplot(ax=ax[0],**plot_params,palette=['firebrick','grey','k'])
     annotator.apply_and_annotate()
     
     
     ax[1] = duringStim['Speed Cm/Sec'].plot(kind='bar', \
-            color=duringStim['Stimulation'].replace({'On':'firebrick','Off':'k'}),
+            color=duringStim['Stimulation'].replace({'On':'firebrick','Off1':'grey','Off2':'k'}),
             xticks=[],)
     ax[1].axvline(x=whenChange[0],color='b',linestyle='--',linewidth=3)
     ax[1].axvline(x=whenChange[1],color='b',linestyle='--',linewidth=3)
@@ -460,7 +461,7 @@ def alignStimulation(index,stimTimes):
     shiftTimes = []
     for time in stimTimes:
         diff = np.array(index)-time
-        shiftTimes.append(np.where(diff==min(abs(diff)))[0][0])
+        shiftTimes.append(np.where(abs(diff)==min(abs(diff)))[0][0])
     return shiftTimes
     
     

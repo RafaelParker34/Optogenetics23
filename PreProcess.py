@@ -65,7 +65,7 @@ class PreProcess:
             prob = np.array(DLCfile[label+'_prob'])
             outliers = np.where(prob<cutoffProb)[0]
             allOutliers = allOutliers + list(outliers)
-            numOutliers.append(len(outliers))
+            numOutliers.append(np.round(len(outliers)/len(prob),4)*100)
             
         cleanedDLC = DLCfile.drop(allOutliers)
         
@@ -76,7 +76,7 @@ class PreProcess:
         for frame in range(len(cleanedDLC.index)-1):
             deltaX = cleanedDLC['Spine_x'].iloc[frame+1] - cleanedDLC['Spine_x'].iloc[frame]
             deltaY = cleanedDLC['Spine_y'].iloc[frame+1] - cleanedDLC['Spine_y'].iloc[frame]
-            delta.append( np.sqrt( np.power(deltaX,2) + np.power(deltaY,2)))
+            delta.append( np.sqrt( np.power(deltaX,2) + np.power(deltaY,2))/(frame+1-frame))
         
         deltaCm = np.array(delta)*pixelLength
         outliersDist = np.where(deltaCm > (np.mean(deltaCm)+(8*np.std(deltaCm))))[0]
@@ -106,10 +106,10 @@ class PreProcess:
             minAngle = 90
         else:
             minAngle = min(thetaMove)
-        sharpAngle = 170 - (170-minAngle)*0.75 #sharpest 25%
-        mediumAngle = 170 - (170-minAngle)*0.35 #medium 40%
+        sharpAngle = 175 - (175-minAngle)*0.70 #sharpest 30%
+        mediumAngle = 175 - (175-minAngle)*0.25 #medium 45%
         
-        angles = {'Sharp':sharpAngle,'Medium':mediumAngle,'Broad':170,'Minimum':minAngle}
+        angles = {'Sharp':sharpAngle,'Medium':mediumAngle,'Broad':175,'Minimum':minAngle}
         
         angleJudgements = [PreProcess.qualifyAngle(theta[i],turnLeft[i],\
                            distanceCm[i],sharpAngle,mediumAngle,distanceThresh)\
@@ -119,15 +119,15 @@ class PreProcess:
         return theta, midPoint, directionTurn, angleJudgements, angles
             
     def getAngle(bodypart1:list,bodypart2:list,bodypart3:list):
-        v1 = np.subtract(bodypart1,bodypart2)
-        v2 = np.subtract(bodypart2,bodypart3)
+        v1 = np.subtract(bodypart3,bodypart2)
+        v2 = np.subtract(bodypart1,bodypart2)
         
         theta = []
         for frame in range(len(v1[0])):
             dot = np.dot(v2[:,frame],v1[:,frame])
             norm = np.linalg.norm(v2[:,frame])*np.linalg.norm(v1[:,frame])
             cosTheta = dot/norm
-            theta.append(180-np.rad2deg(np.arccos(cosTheta)))
+            theta.append(np.rad2deg(np.arccos(cosTheta)))
             
         midPoint = np.divide( np.add(bodypart1,bodypart3),2)
         return theta, midPoint
@@ -155,7 +155,7 @@ class PreProcess:
             direction = 'Left_'
         else:
             direction = 'Right_'
-        if theta>170 or distance<distanceThresh:
+        if theta>175 or distance<distanceThresh:
             return 'Straight'
         elif theta > mediumAngle:
             return direction+'Broad'
@@ -170,7 +170,7 @@ def alignOutliers(index,stimTimes):
     shiftTimes = []
     for time in stimTimes:
         diff = np.array(index)-time
-        shiftTimes.append(np.where(diff==min(abs(diff)))[0][0])
+        shiftTimes.append(np.where(abs(diff)==min(abs(diff)))[0][0])
     return shiftTimes
 
         
