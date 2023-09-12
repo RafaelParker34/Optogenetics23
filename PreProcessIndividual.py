@@ -10,7 +10,7 @@ import numpy as np
 
 class PreProcessIndividual:
     
-    def __init__(self,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern):
+    def __init__(self,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern,smoothingFactor):
         
         self.pixelLength = pixelLength
         self.frameRate = frameRate
@@ -20,6 +20,7 @@ class PreProcessIndividual:
         self.distanceThresh = distanceThresh
         self.mouse = mouse
         self.stimPattern = stimPattern
+        self.smoothingFactor = smoothingFactor +1
         self.pairs = (
             [('Left','Before'),('Left','During')],
             [('Left','During'),('Left','After')],
@@ -117,15 +118,18 @@ class PreProcessIndividual:
             minAngle = 90
         else:
             minAngle = min(thetaMove)
-        sharpAngle = 175 - (175-minAngle)*0.75 #sharpest 25%
-        mediumAngle = 175 - (175-minAngle)*0.35 #medium 40%
+        sharpAngle = 170 - (170-minAngle)*0.65 #sharpest 35%
+        mediumAngle = 170 - (170-minAngle)*0.25 #medium 40%
         
         angles = {'Sharp':sharpAngle,'Medium':mediumAngle,'Broad':170,'Minimum':minAngle}
         
         angleJudgements = [PreProcessIndividual.qualifyAngle(theta[i],turnLeft[i],\
                            distanceCm[i],sharpAngle,mediumAngle,distanceThresh)\
                            for i in range(len(theta))]
-            
+        
+        angleJudgements = PreProcessIndividual.smoothAngle(angleJudgements,self.smoothingFactor,'Left')
+        angleJudgements = PreProcessIndividual.smoothAngle(angleJudgements,self.smoothingFactor,'Right')
+        
         self.theta = theta
         self.midPoint = midPoint
         self.direction = directionTurn
@@ -163,6 +167,8 @@ class PreProcessIndividual:
         for i in range(len(turnRight)):
             if turnRight[i]:
                 directionTurn[i] = 'Right'
+        for i in range(len(directionTurn)-5):
+            directionTurn
         
         return turnLeft, directionTurn
     
@@ -171,7 +177,7 @@ class PreProcessIndividual:
             direction = 'Left_'
         else:
             direction = 'Right_'
-        if theta>175 or distance<distanceThresh:
+        if theta>170 or distance<distanceThresh:
             return 'Straight'
         elif theta > mediumAngle:
             return direction+'Broad'
@@ -180,6 +186,17 @@ class PreProcessIndividual:
         else:
             return direction+'Sharp'
             
+    def smoothAngle(angleJudgements,smoothingFactor,direction):
+        angleJudgements = np.array(angleJudgements)
+        for judge in range(len(angleJudgements)-(smoothingFactor+1)):
+            if angleJudgements[judge][:len(direction)] == direction and angleJudgements[judge+1]=='Straight':
+                nextFew = angleJudgements[judge+1:judge+smoothingFactor]
+                nextFew = [i[:len(direction)] for i in nextFew]
+                if direction in nextFew:
+                    nextOne = np.where(np.array(nextFew)==direction)[0][-1]
+                    angleJudgements[judge+1:judge+nextOne+1] = angleJudgements[judge]
+                    judge+=nextOne
+        return angleJudgements.tolist()
         
 #%%
     def alignOutliers(self):

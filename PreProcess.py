@@ -9,7 +9,7 @@ import numpy as np
 
 class PreProcess:
     
-    def __init__(self,path,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern):
+    def __init__(self,path,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern,smoothingFactor):
         
         self.pixelLength = pixelLength
         self.frameRate = frameRate
@@ -19,6 +19,7 @@ class PreProcess:
         self.distanceThresh = distanceThresh
         self.mouse = mouse
         self.stimPattern = stimPattern
+        self.smoothingFactor = smoothingFactor
         
         self.DLCfile = PreProcess.importDLC(path)
         self.cleanDLC, self.allOutliers, self.numOutliers = PreProcess.cleanOutliers(self.DLCfile,relevantLabels,cutoffProb)
@@ -79,7 +80,7 @@ class PreProcess:
             delta.append( np.sqrt( np.power(deltaX,2) + np.power(deltaY,2))/(frame+1-frame))
         
         deltaCm = np.array(delta)*pixelLength
-        outliersDist = np.where(deltaCm > (np.mean(deltaCm)+(8*np.std(deltaCm))))[0]
+        outliersDist = np.where(deltaCm > (np.mean(deltaCm)+(5*np.std(deltaCm))))[0]
         deltaCm = np.delete(deltaCm,outliersDist)
         deltaCm = np.append(deltaCm,deltaCm[-1])
         speedSec = deltaCm*frameRate
@@ -87,7 +88,7 @@ class PreProcess:
         
         return deltaCm, speedSec, outliersDist
     
-    def turnAngle(cleanedDLC,distanceCm,relevantLabels,distanceThresh):
+    def turnAngle(cleanedDLC,distanceCm,relevantLabels,distanceThresh,smoothingFactor):
     
         bodyparts = []
         for label in relevantLabels:
@@ -106,15 +107,17 @@ class PreProcess:
             minAngle = 90
         else:
             minAngle = min(thetaMove)
-        sharpAngle = 175 - (175-minAngle)*0.70 #sharpest 30%
-        mediumAngle = 175 - (175-minAngle)*0.25 #medium 45%
+        sharpAngle = 170 - (170-minAngle)*0.65 #sharpest 35%
+        mediumAngle = 170 - (170-minAngle)*0.25 #medium 40%
         
-        angles = {'Sharp':sharpAngle,'Medium':mediumAngle,'Broad':175,'Minimum':minAngle}
+        angles = {'Sharp':sharpAngle,'Medium':mediumAngle,'Broad':170,'Minimum':minAngle}
         
         angleJudgements = [PreProcess.qualifyAngle(theta[i],turnLeft[i],\
                            distanceCm[i],sharpAngle,mediumAngle,distanceThresh)\
                            for i in range(len(theta))]
             
+        angleJudgements = PreProcess.smoothAngle(angleJudgements,self.smoothingFactor,'Left')
+        angleJudgements = PreProcess.smoothAngle(angleJudgements,self.smoothingFactor,'Right')
             
         return theta, midPoint, directionTurn, angleJudgements, angles
             
@@ -155,7 +158,7 @@ class PreProcess:
             direction = 'Left_'
         else:
             direction = 'Right_'
-        if theta>175 or distance<distanceThresh:
+        if theta>170 or distance<distanceThresh:
             return 'Straight'
         elif theta > mediumAngle:
             return direction+'Broad'
@@ -163,6 +166,18 @@ class PreProcess:
             return direction+'Medium'
         else:
             return direction+'Sharp'
+        
+    def smoothAngle(angleJudgements,smoothingFactor,direction):
+        angleJudgements = np.array(angleJudgements)
+        for judge in range(len(angleJudgements)-(smoothingFactor+1)):
+            if angleJudgements[judge][:len(direction)] == direction and angleJudgements[judge+1]=='Straight':
+                nextFew = angleJudgements[judge+1:judge+smoothingFactor]
+                nextFew = [i[:len(direction)] for i in nextFew]
+                if direction in nextFew:
+                    nextOne = np.where(np.array(nextFew)==direction)[0][-1]
+                    angleJudgements[judge+1:judge+nextOne+1] = angleJudgements[judge]
+                    judge+=nextOne
+        return angleJudgements.tolist()
             
         
 

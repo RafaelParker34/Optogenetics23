@@ -23,6 +23,7 @@ def generateReport(preprocessed,savePath):
     plot5 = timeTurning(preprocessed)
     plot6 = distTurning(preprocessed)
     plot7 = overallDist(preprocessed)
+    plot8 = cumulativeAngle(preprocessed)
 
     pp = PdfPages(savePath)
     pp.savefig(plot1,bbox_inches='tight')
@@ -32,9 +33,10 @@ def generateReport(preprocessed,savePath):
     pp.savefig(plot5,bbox_inches='tight')
     pp.savefig(plot6,bbox_inches='tight')
     pp.savefig(plot7,bbox_inches='tight')
+    pp.savefig(plot8,bbox_inches='tight')
     if preprocessed.mouse == '0510' or '0513':
-        plot8 = duringStimulation(preprocessed)
-        pp.savefig(plot8,bbox_inches='tight')
+        plot9 = duringStimulation(preprocessed)
+        pp.savefig(plot9,bbox_inches='tight')
 
     pp.close()
 
@@ -128,7 +130,7 @@ def plotTurning(preprocessed):
     for i in range(3):
         turnFrames = np.where(np.array(preprocessed.angleJudgements[start-length:start]) != 'Straight')[0]
         turns = np.array(preprocessed.theta[start-length:start])[turnFrames]
-        binning = np.linspace(90,175,17)
+        binning = np.linspace(90,170,16)
         
         if i ==0:
             ax[0].hist(turns,alpha=0.8,color=colors[i],bins=binning)
@@ -237,7 +239,7 @@ def timeTurning(preprocessed):
     fig.set_figwidth(13)
     fig.set_figheight(6)
     annotator = Annotator(ax[0],preprocessed.pairs,**plot_params)
-    annotator.configure(test='Mann-Whitney',text_format='star',loc='outside')
+    annotator.configure(test='Mann-Whitney',text_format='star',loc='outside',comparisons_correction='Benjamini-Hochberg')
     sns.boxplot(ax=ax[0],**plot_params,showfliers=False)
     annotator.apply_and_annotate()
     
@@ -255,7 +257,7 @@ def timeTurning(preprocessed):
         ax[1].set_xticklabels(((xrange+1)*30).astype(str))
     else:
         ax[1].set_xticks(xrange)
-        lab = (((xrange+1)%3==0)*xrange+1*30).astype(str)
+        lab = ((((xrange+1)%3==0)*xrange+1)*30).astype(str)
         lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
     
@@ -303,7 +305,7 @@ def distTurning(preprocessed):
     fig.set_figwidth(13)
     fig.set_figheight(6)
     annotator = Annotator(ax[0],preprocessed.pairs,**plot_params)
-    annotator.configure(test='Mann-Whitney',text_format='star',loc='outside')
+    annotator.configure(test='Mann-Whitney',text_format='star',loc='outside',comparisons_correction='Benjamini-Hochberg')
     sns.boxplot(ax=ax[0],**plot_params,showfliers=False)
     annotator.apply_and_annotate()
     
@@ -322,7 +324,7 @@ def distTurning(preprocessed):
         ax[1].set_xticklabels(((xrange+1)*30).astype(str))
     else:
         ax[1].set_xticks(xrange)
-        lab = (((xrange+1)%3==0)*xrange+1*30).astype(str)
+        lab = ((((xrange+1)%3==0)*xrange+1)*30).astype(str)
         lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
     
@@ -379,7 +381,7 @@ def overallDist(preprocessed):
         ax[1].set_xticklabels(((xrange+1)*30).astype(str))
     else:
         ax[1].set_xticks(xrange)
-        lab = (((xrange+1)%3==0)*xrange+1*30).astype(str)
+        lab = ((((xrange+1)%3==0)*xrange+1)*30).astype(str)
         lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
     handles = [Rectangle((0, 0), 1, 1, color=c, ec="k") for c in ['mediumblue']]
@@ -436,7 +438,7 @@ def duringStimulation(preprocessed):
         [('After','On'),('During','On')],
         [('Before','On'),('During','On')])
     annotator = Annotator(ax[0],pairs,**plot_params)
-    annotator.configure(test='Mann-Whitney',text_format='star',loc='outside')
+    annotator.configure(test='Mann-Whitney',text_format='star',loc='outside',comparisons_correction='Benjamini-Hochberg')
     sns.barplot(ax=ax[0],**plot_params,palette=['firebrick','grey','k'])
     annotator.apply_and_annotate()
     
@@ -463,11 +465,33 @@ def alignStimulation(index,stimTimes):
         diff = np.array(index)-time
         shiftTimes.append(np.where(abs(diff)==min(abs(diff)))[0][0])
     return shiftTimes
+
+#%%
+def cumulativeAngle(preprocessed):
+    angles = np.array(preprocessed.theta)
+    turns = pd.Series(preprocessed.angleJudgements)
     
     
+    leftPos = ['Left_Broad','Left_Medium','Left_Sharp']
+
+    angles = 180-angles
+    leftWhere = np.where(turns.isin(leftPos))[0]
+    leftAngles = 0-angles[leftWhere]
+    angles[leftWhere] = leftAngles
     
+    filterLow = np.where(turns == 'Straight')[0]
+    angles[filterLow] = 0
     
+    cumulative = np.cumsum(angles) 
     
-    
+    fig,ax = plt.subplots()
+    fig.set_figwidth(12)
+    fig.set_figheight(3)
+    ax.plot(cumulative)
+    ax.set_title('Cumulative Turning Angle')
+    ax.set_ylabel('Cummulative Angle (Right Positive)')
+    ax.set_xlabel('Frame')
+    ax.axvline(x=preprocessed.shiftTimes[0],color='k',linestyle='--')
+    ax.axvline(x=preprocessed.shiftTimes[1],color='k',linestyle='--')
     
     
