@@ -484,14 +484,36 @@ def cumulativeAngle(preprocessed):
     
     cumulative = np.cumsum(angles) 
     
-    fig,ax = plt.subplots()
-    fig.set_figwidth(12)
-    fig.set_figheight(3)
-    ax.plot(cumulative)
-    ax.set_title('Cumulative Turning Angle')
-    ax.set_ylabel('Cummulative Angle (Right Positive)')
-    ax.set_xlabel('Frame')
-    ax.axvline(x=preprocessed.shiftTimes[0],color='k',linestyle='--')
-    ax.axvline(x=preprocessed.shiftTimes[1],color='k',linestyle='--')
+    slope = [cumulative[i]-cumulative[i-1] for i in range(1,len(cumulative))]
+    slope = [0]+slope
     
+    slopes,category = bins30s(preprocessed, slope)
+    for section in range(len(slopes)):
+        slopes[section] = slopes[section][slopes[section] != 0]
+    
+    fig,ax = plt.subplots(2,1)
+    plt.subplots_adjust(hspace=1)
+    fig.set_figwidth(12)
+    fig.set_figheight(6)
+    fig.suptitle('Turning Bias')
+    ax[0].plot(cumulative)
+    ax[0].set_title('Cumulative Turning Angle')
+    ax[0].set_ylabel('Cummulative Angle (Right Positive)')
+    ax[0].set_xlabel('Frame')
+    ax[0].axvline(x=preprocessed.shiftTimes[0],color='k',linestyle='--')
+    ax[0].axvline(x=preprocessed.shiftTimes[1],color='k',linestyle='--')
+    
+    xrange = np.array(range(len(slopes)))
+    sns.barplot(ax=ax[1],data=slopes)
+    ax[1].set_xlabel('Time (Sec)')
+    ax[1].set_ylabel('Average Slope')
+    ax[1].set_title('Slope of Turning Bias')
+    if max(xrange)<13:
+        ax[1].set_xticks(xrange)
+        ax[1].set_xticklabels(((xrange+1)*30).astype(str))
+    else:
+        ax[1].set_xticks(xrange)
+        lab = ((((xrange+1)%3==0)*xrange+1)*30).astype(str)
+        lab[lab=='30']=''
+        ax[1].set_xticklabels(lab)
     
