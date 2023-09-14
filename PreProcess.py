@@ -9,7 +9,7 @@ import numpy as np
 
 class PreProcess:
     
-    def __init__(self,path,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern,smoothingFactor):
+    def __init__(self,path,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern,smoothingFactor,offset):
         
         self.pixelLength = pixelLength
         self.frameRate = frameRate
@@ -20,18 +20,19 @@ class PreProcess:
         self.mouse = mouse
         self.stimPattern = stimPattern
         self.smoothingFactor = smoothingFactor
+        self.offset = offset
         
         self.DLCfile = PreProcess.importDLC(path)
-        self.cleanDLC, self.allOutliers, self.numOutliers = PreProcess.cleanOutliers(self.DLCfile,relevantLabels,cutoffProb)
-        self.distance,self.speed, outliersDist = PreProcess.distanceTraveled(self.cleanDLC, pixelLength, frameRate)
+        self.cleanDLC, self.allOutliers, self.numOutliers = PreProcess.cleanOutliers()
+        self.distance,self.speed, outliersDist = PreProcess.distanceTraveled(self)
         
         removed = [self.cleanDLC.index[i] for i in outliersDist]
         self.cleanDLC = self.cleanDLC.drop(removed)
         self.allOutliers = self.allOutliers +removed
         
         
-        self.theta,self.midPoint,self.direction,self.angleJudgements,self.angleCategories = PreProcess.turnAngle(self.cleanDLC, self.distance, relevantLabels, distanceThresh)
-        self.shiftTimes = alignOutliers(self.cleanDLC.index, stimTimes)
+        self.theta,self.midPoint,self.direction,self.angleJudgements,self.angleCategories = PreProcess.turnAngle()
+        self.shiftTimes = PreProcess.alignOutliers()
         
         self.pairs = (
             [('Left','Before'),('Left','During')],
@@ -58,21 +59,24 @@ class PreProcess:
                 DLCfile = DLCfile.rename(columns={col:col+'_x'})
         return DLCfile
     
-    def cleanOutliers(DLCfile,relevantLabels,cutoffProb):
+    def cleanOutliers(self):
         allOutliers = []
         numOutliers = []
         
-        for label in relevantLabels:
-            prob = np.array(DLCfile[label+'_prob'])
-            outliers = np.where(prob<cutoffProb)[0]
+        for label in self.relevantLabels:
+            prob = np.array(self.DLCfile[label+'_prob'])
+            outliers = np.where(prob<self.cutoffProb)[0]
             allOutliers = allOutliers + list(outliers)
             numOutliers.append(np.round(len(outliers)/len(prob),4)*100)
             
-        cleanedDLC = DLCfile.drop(allOutliers)
+        cleanedDLC = self.DLCfile.drop(allOutliers)
         
         return cleanedDLC, allOutliers, numOutliers
     
-    def distanceTraveled(cleanedDLC,pixelLength,frameRate):
+    def distanceTraveled(self):
+        cleanedDLC = self.cleanDLC
+        pixelLength = self.pixelLength
+        frameRate = self.frameRate
         delta = []
         for frame in range(len(cleanedDLC.index)-1):
             deltaX = cleanedDLC['Spine_x'].iloc[frame+1] - cleanedDLC['Spine_x'].iloc[frame]
@@ -88,10 +92,14 @@ class PreProcess:
         
         return deltaCm, speedSec, outliersDist
     
-    def turnAngle(cleanedDLC,distanceCm,relevantLabels,distanceThresh,smoothingFactor):
-    
+    def turnAngle(self):
+        cleanedDLC = self.cleanDLC
+        distanceCm = self.distnaceCm
+        distanceThresh = self.distanceThresh
+        smoothingFactor = self.smoothingFactor
+        
         bodyparts = []
-        for label in relevantLabels:
+        for label in self.relevantLabels:
             bodyparts.append([cleanedDLC[label+'_x'],cleanedDLC[label+'_y']])
             
         left = [cleanedDLC['LS_x'],cleanedDLC['LS_y']]
@@ -116,77 +124,79 @@ class PreProcess:
                            distanceCm[i],sharpAngle,mediumAngle,distanceThresh)\
                            for i in range(len(theta))]
             
-        angleJudgements = PreProcess.smoothAngle(angleJudgements,self.smoothingFactor,'Left')
-        angleJudgements = PreProcess.smoothAngle(angleJudgements,self.smoothingFactor,'Right')
+        angleJudgements = PreProcess.smoothAngle(angleJudgements,smoothingFactor,'Left')
+        angleJudgements = PreProcess.smoothAngle(angleJudgements,smoothingFactor,'Right')
             
         return theta, midPoint, directionTurn, angleJudgements, angles
-            
-    def getAngle(bodypart1:list,bodypart2:list,bodypart3:list):
-        v1 = np.subtract(bodypart3,bodypart2)
-        v2 = np.subtract(bodypart1,bodypart2)
-        
-        theta = []
-        for frame in range(len(v1[0])):
-            dot = np.dot(v2[:,frame],v1[:,frame])
-            norm = np.linalg.norm(v2[:,frame])*np.linalg.norm(v1[:,frame])
-            cosTheta = dot/norm
-            theta.append(np.rad2deg(np.arccos(cosTheta)))
-            
-        midPoint = np.divide( np.add(bodypart1,bodypart3),2)
-        return theta, midPoint
-    
-    def direction(midPoint,left:list,right:list):
-        diffLeft = np.subtract(midPoint,np.array(left))
-        diffRight = np.subtract(midPoint,np.array(right))
-        
-        distLeft = np.sqrt(np.add(np.power(diffLeft[0],2),np.power(diffLeft[1],2)))
-        distRight = np.sqrt(np.add(np.power(diffRight[0],2),np.power(diffRight[1],2)))
-        
-        turnLeft = (distLeft<distRight)
-        
-        turnRight = (distRight<distLeft)
-        
-        directionTurn = ['Left' if i else 'Straight' for i in turnLeft]
-        for i in range(len(turnRight)):
-            if turnRight[i]:
-                directionTurn[i] = 'Right'
-        
-        return turnLeft, directionTurn
-    
-    def qualifyAngle(theta,Left,distance,sharpAngle,mediumAngle,distanceThresh):
-        if Left:
-            direction = 'Left_'
-        else:
-            direction = 'Right_'
-        if theta>170 or distance<distanceThresh:
-            return 'Straight'
-        elif theta > mediumAngle:
-            return direction+'Broad'
-        elif theta > sharpAngle:
-            return direction+'Medium'
-        else:
-            return direction+'Sharp'
-        
-    def smoothAngle(angleJudgements,smoothingFactor,direction):
-        angleJudgements = np.array(angleJudgements)
-        for judge in range(len(angleJudgements)-(smoothingFactor+1)):
-            if angleJudgements[judge][:len(direction)] == direction and angleJudgements[judge+1]=='Straight':
-                nextFew = angleJudgements[judge+1:judge+smoothingFactor]
-                nextFew = [i[:len(direction)] for i in nextFew]
-                if direction in nextFew:
-                    nextOne = np.where(np.array(nextFew)==direction)[0][-1]
-                    angleJudgements[judge+1:judge+nextOne+1] = angleJudgements[judge]
-                    judge+=nextOne
-        return angleJudgements.tolist()
-            
         
 
-def alignOutliers(index,stimTimes):
-    shiftTimes = []
-    for time in stimTimes:
-        diff = np.array(index)-time
-        shiftTimes.append(np.where(abs(diff)==min(abs(diff)))[0][0])
-    return shiftTimes
+    def alignOutliers(self):
+        index = self.cleanDLC.index
+        stimTimes = self.stimTimes
+        shiftTimes = []
+        for time in stimTimes:
+            diff = np.array(index)-time
+            shiftTimes.append(np.where(abs(diff)==min(abs(diff)))[0][0])
+        return shiftTimes
 
+#%%
+def getAngle(bodypart1:list,bodypart2:list,bodypart3:list):
+    v1 = np.subtract(bodypart3,bodypart2)
+    v2 = np.subtract(bodypart1,bodypart2)
+    
+    theta = []
+    for frame in range(len(v1[0])):
+        dot = np.dot(v2[:,frame],v1[:,frame])
+        norm = np.linalg.norm(v2[:,frame])*np.linalg.norm(v1[:,frame])
+        cosTheta = dot/norm
+        theta.append(np.rad2deg(np.arccos(cosTheta)))
         
+    midPoint = np.divide( np.add(bodypart1,bodypart3),2)
+    return theta, midPoint
+
+def direction(midPoint,left:list,right:list):
+    diffLeft = np.subtract(midPoint,np.array(left))
+    diffRight = np.subtract(midPoint,np.array(right))
+    
+    distLeft = np.sqrt(np.add(np.power(diffLeft[0],2),np.power(diffLeft[1],2)))
+    distRight = np.sqrt(np.add(np.power(diffRight[0],2),np.power(diffRight[1],2)))
+    
+    turnLeft = (distLeft<distRight)
+    
+    turnRight = (distRight<distLeft)
+    
+    directionTurn = ['Left' if i else 'Straight' for i in turnLeft]
+    for i in range(len(turnRight)):
+        if turnRight[i]:
+            directionTurn[i] = 'Right'
+    for i in range(len(directionTurn)-5):
+        directionTurn
+    
+    return turnLeft, directionTurn
+
+def qualifyAngle(theta,Left,distance,sharpAngle,mediumAngle,distanceThresh):
+    if Left:
+        direction = 'Left_'
+    else:
+        direction = 'Right_'
+    if theta>170 or distance<distanceThresh:
+        return 'Straight'
+    elif theta > mediumAngle:
+        return direction+'Broad'
+    elif theta > sharpAngle:
+        return direction+'Medium'
+    else:
+        return direction+'Sharp'
+        
+def smoothAngle(angleJudgements,smoothingFactor,direction):
+    angleJudgements = np.array(angleJudgements)
+    for judge in range(len(angleJudgements)-(smoothingFactor+1)):
+        if angleJudgements[judge][:len(direction)] == direction and angleJudgements[judge+1]=='Straight':
+            nextFew = angleJudgements[judge+1:judge+smoothingFactor]
+            nextFew = [i[:len(direction)] for i in nextFew]
+            if direction in nextFew:
+                nextOne = np.where(np.array(nextFew)==direction)[0][-1]
+                angleJudgements[judge+1:judge+nextOne+1] = angleJudgements[judge]
+                judge+=nextOne
+    return angleJudgements.tolist()
         

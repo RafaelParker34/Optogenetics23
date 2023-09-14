@@ -6,11 +6,12 @@ Created on Sun Sep 10 13:04:44 2023
 """
 import pandas as pd
 import numpy as np
+from PreProcess import getAngle,direction,qualifyAngle,smoothAngle
 
 
 class PreProcessIndividual:
     
-    def __init__(self,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern,smoothingFactor):
+    def __init__(self,pixelLength,frameRate,cutoffProb,relevantLabels,stimTimes,distanceThresh,mouse,stimPattern,smoothingFactor,offset):
         
         self.pixelLength = pixelLength
         self.frameRate = frameRate
@@ -21,6 +22,7 @@ class PreProcessIndividual:
         self.mouse = mouse
         self.stimPattern = stimPattern
         self.smoothingFactor = smoothingFactor +1
+        self.offset = offset
         self.pairs = (
             [('Left','Before'),('Left','During')],
             [('Left','During'),('Left','After')],
@@ -108,8 +110,8 @@ class PreProcessIndividual:
         left = [cleanedDLC['LS_x'],cleanedDLC['LS_y']]
         right = [cleanedDLC['RS_x'],cleanedDLC['RS_y']]
             
-        theta,midPoint = PreProcessIndividual.getAngle(bodyparts[0],bodyparts[1],bodyparts[2])
-        turnLeft,directionTurn = PreProcessIndividual.direction(midPoint,left,right)
+        theta,midPoint = getAngle(bodyparts[0],bodyparts[1],bodyparts[2])
+        turnLeft,directionTurn = direction(midPoint,left,right)
         
         
         onlyMove = np.where(np.array(distanceCm) > distanceThresh)[0]
@@ -123,12 +125,12 @@ class PreProcessIndividual:
         
         angles = {'Sharp':sharpAngle,'Medium':mediumAngle,'Broad':170,'Minimum':minAngle}
         
-        angleJudgements = [PreProcessIndividual.qualifyAngle(theta[i],turnLeft[i],\
+        angleJudgements = [qualifyAngle(theta[i],turnLeft[i],\
                            distanceCm[i],sharpAngle,mediumAngle,distanceThresh)\
                            for i in range(len(theta))]
         
-        angleJudgements = PreProcessIndividual.smoothAngle(angleJudgements,self.smoothingFactor,'Left')
-        angleJudgements = PreProcessIndividual.smoothAngle(angleJudgements,self.smoothingFactor,'Right')
+        angleJudgements = smoothAngle(angleJudgements,self.smoothingFactor,'Left')
+        angleJudgements = smoothAngle(angleJudgements,self.smoothingFactor,'Right')
         
         self.theta = theta
         self.midPoint = midPoint
@@ -138,65 +140,7 @@ class PreProcessIndividual:
         
         return angleJudgements
             
-    def getAngle(bodypart1:list,bodypart2:list,bodypart3:list):
-        v1 = np.subtract(bodypart3,bodypart2)
-        v2 = np.subtract(bodypart1,bodypart2)
-        
-        theta = []
-        for frame in range(len(v1[0])):
-            dot = np.dot(v2[:,frame],v1[:,frame])
-            norm = np.linalg.norm(v2[:,frame])*np.linalg.norm(v1[:,frame])
-            cosTheta = dot/norm
-            theta.append(np.rad2deg(np.arccos(cosTheta)))
-            
-        midPoint = np.divide( np.add(bodypart1,bodypart3),2)
-        return theta, midPoint
-    
-    def direction(midPoint,left:list,right:list):
-        diffLeft = np.subtract(midPoint,np.array(left))
-        diffRight = np.subtract(midPoint,np.array(right))
-        
-        distLeft = np.sqrt(np.add(np.power(diffLeft[0],2),np.power(diffLeft[1],2)))
-        distRight = np.sqrt(np.add(np.power(diffRight[0],2),np.power(diffRight[1],2)))
-        
-        turnLeft = (distLeft<distRight)
-        
-        turnRight = (distRight<distLeft)
-        
-        directionTurn = ['Left' if i else 'Straight' for i in turnLeft]
-        for i in range(len(turnRight)):
-            if turnRight[i]:
-                directionTurn[i] = 'Right'
-        for i in range(len(directionTurn)-5):
-            directionTurn
-        
-        return turnLeft, directionTurn
-    
-    def qualifyAngle(theta,Left,distance,sharpAngle,mediumAngle,distanceThresh):
-        if Left:
-            direction = 'Left_'
-        else:
-            direction = 'Right_'
-        if theta>170 or distance<distanceThresh:
-            return 'Straight'
-        elif theta > mediumAngle:
-            return direction+'Broad'
-        elif theta > sharpAngle:
-            return direction+'Medium'
-        else:
-            return direction+'Sharp'
-            
-    def smoothAngle(angleJudgements,smoothingFactor,direction):
-        angleJudgements = np.array(angleJudgements)
-        for judge in range(len(angleJudgements)-(smoothingFactor+1)):
-            if angleJudgements[judge][:len(direction)] == direction and angleJudgements[judge+1]=='Straight':
-                nextFew = angleJudgements[judge+1:judge+smoothingFactor]
-                nextFew = [i[:len(direction)] for i in nextFew]
-                if direction in nextFew:
-                    nextOne = np.where(np.array(nextFew)==direction)[0][-1]
-                    angleJudgements[judge+1:judge+nextOne+1] = angleJudgements[judge]
-                    judge+=nextOne
-        return angleJudgements.tolist()
+
         
 #%%
     def alignOutliers(self):
@@ -208,3 +152,4 @@ class PreProcessIndividual:
             shiftTimes.append(np.where(abs(diff)==min(abs(diff)))[0][0])
         self.shiftTimes = shiftTimes
         return shiftTimes
+

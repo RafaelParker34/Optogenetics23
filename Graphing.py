@@ -7,10 +7,12 @@ Created on Tue Aug 29 13:45:09 2023
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-import seaborn as sns
+from matplotlib.collections import LineCollection
 from matplotlib.backends.backend_pdf import PdfPages
+import seaborn as sns
 from statannotations.Annotator import Annotator
-from PreProcess import alignOutliers
+
+import scipy.stats as stats
 import numpy as np
 import pandas as pd
 
@@ -98,12 +100,22 @@ def plotDistance(preprocessed):
     ax[0].set_title('Distance Over All Frames (Spine)')
     ax[0].set_ylabel('Cummulative Distance (Cm)')
     
-    ax[1].bar(range(len(preprocessed.distance)),preprocessed.distance)
+    
+    N = len(preprocessed.distance)
+    x = np.arange(N)
+    segs = [[(x[i],0),(x[i+1],preprocessed.distance[i])] for i in range(len(x)-1)]
+    line_segments = LineCollection(segs,linestyles='solid')
+    
+    
+    ax[1].add_collection(line_segments)
     ax[1].set_title('Distance Traveled Per Frame (Spine)')
     ax[1].set_ylabel('Distance(Cm)')
     ax[1].set_ylim(0,max(preprocessed.distance))
     
-    ax[2].bar(range(len(preprocessed.speed)),preprocessed.speed)
+    segs = [[(x[i],0),(x[i+1],preprocessed.speed[i])] for i in range(len(x)-1)]
+    line_segments = LineCollection(segs,linestyles='solid')
+    
+    ax[2].add_collection(line_segments)
     ax[2].set_title('Speed Per Frame (Spine)')
     ax[2].set_ylabel('Speed (Cm/Sec)')
     ax[2].set_ylim(0,max(preprocessed.speed))
@@ -184,25 +196,20 @@ def plotPath(preprocessed):
         pathX = list(preprocessed.cleanDLC['Spine_x'][start-length:start])
         pathY = list(preprocessed.cleanDLC['Spine_y'][start-length:start])
         pathY = [0-coor for coor in pathY] #Y coordinates are flipped for some reason
-        for j in range(length-1):    
-            ax[i].plot(pathX[j:j+2],pathY[j:j+2],color=colorMap[j])
+        segs = [[(pathX[i],pathY[i]),(pathX[i+1],pathY[i+1])] for i in range(len(pathX)-1)]
+        line_segments = LineCollection(segs,linestyles='solid',colors=colorMap[:-1])
+        
+        
+        ax[i].set_xlim(50,550)
+        ax[i].set_ylim(-460, 0)
         ax[i].plot(pathX[0],pathY[0],marker='*',markersize=20,color='black')
         ax[i].legend(handles,labels,loc='upper left',fontsize='12')
-        ax[i].set_xlim(50,550)
+        ax[i].add_collection(line_segments)
         ax[i].set_xticks=([])
         ax[i].set_yticks=([])
         ax[i].xaxis.set_tick_params(labelbottom=False)
         ax[i].yaxis.set_tick_params(labelleft=False)
-        '''
-        path = np.transpose(np.array(path)).reshape(-1,1,2)
-        segments = np.hstack([path[:-1],path[1:]])
-        
-        coll = LineCollection(segments, cmap=colorMap)
-        coll.set_array(np.random.random(path.shape[0]))
 
-        ax[i].add_collection(coll)
-        ax[i].autoscale_view()
-        '''
         start +=length
     return fig
 
@@ -395,6 +402,8 @@ def duringStimulation(preprocessed):
     stimPattern = 0
     stimOn = []
     stimOff = []
+    offset = preprocessed.offset
+    j = 0
     for i in preprocessed.stimTimes:
         while stimPattern<i:
             stimOn.append(stimPattern)
@@ -402,7 +411,7 @@ def duringStimulation(preprocessed):
             
             stimOff.append(stimPattern)
             stimPattern+=preprocessed.stimPattern[1]
-        stimPattern = i
+        stimPattern = i+offset[j]
         
     stimOn = stimOn[:-1]
     stimOff = stimOff[:-1]
@@ -482,19 +491,23 @@ def cumulativeAngle(preprocessed):
     filterLow = np.where(turns == 'Straight')[0]
     angles[filterLow] = 0
     
-    cumulative = np.cumsum(angles) 
+    cumulative = np.cumsum(angles)
     
     slope = [cumulative[i]-cumulative[i-1] for i in range(1,len(cumulative))]
     slope = [0]+slope
     
     slopes,category = bins30s(preprocessed, slope)
-    for section in range(len(slopes)):
-        slopes[section] = slopes[section][slopes[section] != 0]
     
-    fig,ax = plt.subplots(2,1)
+    z = stats.zscore(slope[:preprocessed.shiftTimes[0]])
+    st = np.array(slope[:preprocessed.shiftTimes[0]]).std()
+    initBias = z[0]*st
+    xrange = np.array(range(len(cumulative)))
+    normCumulative = cumulative+(initBias*xrange)
+
+    fig,ax = plt.subplots(3,1)
     plt.subplots_adjust(hspace=1)
     fig.set_figwidth(12)
-    fig.set_figheight(6)
+    fig.set_figheight(9)
     fig.suptitle('Turning Bias')
     ax[0].plot(cumulative)
     ax[0].set_title('Cumulative Turning Angle')
@@ -516,4 +529,11 @@ def cumulativeAngle(preprocessed):
         lab = ((((xrange+1)%3==0)*xrange+1)*30).astype(str)
         lab[lab=='30']=''
         ax[1].set_xticklabels(lab)
+        
+    ax[2].plot(normCumulative)
+    ax[2].set_title('Noramlized Cumulative Turning Angle')
+    ax[2].set_ylabel('Cummulative Angle (Right Positive)')
+    ax[2].set_xlabel('Frame')
+    ax[2].axvline(x=preprocessed.shiftTimes[0],color='k',linestyle='--')
+    ax[2].axvline(x=preprocessed.shiftTimes[1],color='k',linestyle='--')
     
